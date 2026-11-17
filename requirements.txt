@@ -1,0 +1,33 @@
+# Framework & Server
+fastapi
+uvicorn[standard]
+
+# Settings & Validation
+python-dotenv
+pydantic[email]
+pydantic-settings
+email-validator
+
+# Database & Async Drivers
+sqlalchemy[asyncio]>=2.0.0
+greenlet>=3.0.0
+asyncpg
+psycopg2-binary
+aiosqlite
+alembic
+
+# Security & Authentication
+PyJWT
+pwdlib[argon2]
+pyotp
+python-multipart
+
+# Utilities & Middleware
+slowapi
+tenacity
+
+# Testing & Linting
+httpx
+pytest
+pytest-asyncio
+ruff

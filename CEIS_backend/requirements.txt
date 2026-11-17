@@ -9,7 +9,8 @@ pydantic-settings
 email-validator
 
 # Database & Async Drivers
-sqlalchemy>=2.0.0
+sqlalchemy[asyncio]>=2.0.0
+greenlet>=3.0.0
 asyncpg
 psycopg2-binary
 aiosqlite
