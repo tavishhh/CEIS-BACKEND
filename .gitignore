@@ -1,13 +1,35 @@
-﻿venv/
-.venv/
-__pycache__/
-*.py[cod]
+﻿# Environments & Secrets (NEVER commit)
 .env
+.env.*
+!.env.example
+CEIS_backend/.env
+CEIS_backend/.env.*
+!CEIS_backend/.env.example
+
+# Virtual Environments
+venv/
+.venv/
+env/
+CEIS_backend/venv/
+CEIS_backend/.venv/
+CEIS_backend/env/
+
+# Python Bytecode & Caches
+__pycache__/
+CEIS_backend/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Databases & Logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# IDE & OS Metadata
 .vscode/
 .idea/
-
-.env
-CEIS_backend/.env
-venv/
-CEIS_backend/venv/
-__pycache__/
+.DS_Store
+Thumbs.db
