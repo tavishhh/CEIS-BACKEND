@@ -22,8 +22,13 @@ async def vault_login(
         password=payload.password,
         required_role="admin",
     )
-    user = await auth_service.user_repo.get_by_email(str(payload.email))
-    user_email = user.email if user else str(payload.email)
+    user_email = str(payload.email)
+    try:
+        user = await auth_service.user_repo.get_by_email(str(payload.email))
+        if user:
+            user_email = user.email
+    except Exception:
+        pass
     user_role = token_resp.role
 
     response.set_cookie(

@@ -22,7 +22,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 # 2. Synchronous fallback engine & sessionmaker
 sync_engine = create_engine(
-    settings.DATABASE_URL,
+    settings.SYNC_DATABASE_URL,
     pool_pre_ping=True,
 )
 SessionLocal = sessionmaker(

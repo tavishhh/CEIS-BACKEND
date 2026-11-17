@@ -93,6 +93,20 @@ app = FastAPI(
 ALLOWED_ORIGINS = [
     "http://localhost:4321",
     "http://localhost:3000",
+    "http://127.0.0.1:4321",
+    "http://192.168.1.5:4321",
+    "https://ceis-d1.vercel.app",
+    "https://www.codeeagleinfosolutions.com",
+    "https://codeeagleinfosolutions.com",
+]
+
+# CORS middleware for frontend communication
+ALLOWED_ORIGINS = [
+    "http://localhost:4321",
+    "http://localhost:3000",
+    "http://127.0.0.1:4321",
+    "http://192.168.1.5:4321",
+    "http://192.168.1.2:4321",
     "https://ceis-d1.vercel.app",
     "https://www.codeeagleinfosolutions.com",
     "https://codeeagleinfosolutions.com",
@@ -101,9 +115,10 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register routers under /api/v1

@@ -12,6 +12,7 @@ email-validator
 sqlalchemy>=2.0.0
 asyncpg
 psycopg2-binary
+aiosqlite
 alembic
 
 # Security & Authentication

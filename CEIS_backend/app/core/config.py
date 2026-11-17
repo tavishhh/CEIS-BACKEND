@@ -34,12 +34,29 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = "AdminPassword123!"
 
     @property
-    def ASYNC_DATABASE_URL(self) -> str:
-        url = self.DATABASE_URL
-        if url.startswith("postgresql+psycopg2://"):
-            return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    def SYNC_DATABASE_URL(self) -> str:
+        url = self.DATABASE_URL.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
         if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+        if "ssl=require" in url:
+            url = url.replace("ssl=require", "sslmode=require")
+        return url
+
+    @property
+    def ASYNC_DATABASE_URL(self) -> str:
+        url = self.DATABASE_URL.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql+psycopg2://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql+psycopg2://"):]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        elif url.startswith("sqlite:///"):
+            url = "sqlite+aiosqlite:///" + url[len("sqlite:///"):]
+        if "sslmode=" in url:
+            url = url.replace("sslmode=", "ssl=")
         return url
 
     model_config = SettingsConfigDict(
