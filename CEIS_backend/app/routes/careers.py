@@ -34,14 +34,12 @@ async def create_career_role(
     now = datetime.now(timezone.utc)
     role = CareerRole(
         id=uuid.uuid4(),
-        role_id=payload.role_id,
         title=payload.title,
         department=payload.department,
         location=payload.location,
-        type=payload.type,
+        employment_type=payload.employment_type,
         experience=payload.experience,
         description=payload.description,
-        requirements=payload.requirements or [],
         is_active=payload.is_active,
         created_at=now,
     )
