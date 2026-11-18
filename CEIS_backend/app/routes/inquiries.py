@@ -121,3 +121,39 @@ async def update_inquiry_status(
     )
     _memory_inquiries.insert(0, mock_inq)
     return mock_inq
+
+
+@router.delete("/{id}")
+async def delete_inquiry(
+    id: str,
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(ClientInquiry)
+    try:
+        val_uuid = uuid.UUID(id)
+        stmt = stmt.where((ClientInquiry.id == val_uuid) | (ClientInquiry.reference_id == id))
+    except ValueError:
+        stmt = stmt.where(ClientInquiry.reference_id == id)
+
+    try:
+        res = await db.execute(stmt)
+        inquiry = res.scalar_one_or_none()
+        if inquiry:
+            deleted_ref = inquiry.reference_id
+            deleted_id = str(inquiry.id)
+            await db.delete(inquiry)
+            await db.commit()
+            return {"status": "deleted", "id": deleted_id, "reference_id": deleted_ref}
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    global _memory_inquiries
+    before = len(_memory_inquiries)
+    _memory_inquiries = [i for i in _memory_inquiries if str(i.id) != id and i.reference_id != id]
+    if len(_memory_inquiries) < before:
+        return {"status": "deleted", "id": id}
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry not found")

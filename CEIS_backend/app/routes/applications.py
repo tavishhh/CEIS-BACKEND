@@ -125,3 +125,39 @@ async def update_application_status(
     )
     _memory_applications.insert(0, mock_app)
     return mock_app
+
+
+@router.delete("/{id}")
+async def delete_application(
+    id: str,
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(JobApplication)
+    try:
+        val_uuid = uuid.UUID(id)
+        stmt = stmt.where((JobApplication.id == val_uuid) | (JobApplication.application_id == id))
+    except ValueError:
+        stmt = stmt.where(JobApplication.application_id == id)
+
+    try:
+        res = await db.execute(stmt)
+        application = res.scalar_one_or_none()
+        if application:
+            deleted_app_id = application.application_id
+            deleted_id = str(application.id)
+            await db.delete(application)
+            await db.commit()
+            return {"status": "deleted", "id": deleted_id, "application_id": deleted_app_id}
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    global _memory_applications
+    before = len(_memory_applications)
+    _memory_applications = [a for a in _memory_applications if str(a.id) != id and a.application_id != id]
+    if len(_memory_applications) < before:
+        return {"status": "deleted", "id": id}
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")

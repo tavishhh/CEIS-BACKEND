@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,3 +51,35 @@ async def create_career_role(
     except Exception:
         _memory_careers.insert(0, role)
         return role
+
+
+@router.delete("/{id}")
+async def delete_career_role(
+    id: str,
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        val_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid career role ID")
+
+    try:
+        res = await db.execute(select(CareerRole).where(CareerRole.id == val_uuid))
+        role = res.scalar_one_or_none()
+        if role:
+            await db.delete(role)
+            await db.commit()
+            return {"status": "deleted", "id": str(val_uuid)}
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    global _memory_careers
+    before = len(_memory_careers)
+    _memory_careers = [c for c in _memory_careers if str(c.id) != id]
+    if len(_memory_careers) < before:
+        return {"status": "deleted", "id": id}
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Career role not found")
