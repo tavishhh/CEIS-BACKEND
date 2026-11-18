@@ -54,30 +54,45 @@ async def create_window(
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now(timezone.utc)
-    new_window = CMSWindow(
-        id=uuid.uuid4(),
-        slot_id=payload.slot_id,
-        slug=payload.slug,
-        title=payload.title,
-        category=payload.category,
-        summary=payload.summary,
-        problem=payload.problem,
-        solution=payload.solution,
-        metrics=payload.metrics or [],
-        tags=payload.tags or [],
-        is_published=payload.is_published,
-        updated_at=now,
-    )
     try:
+        # Upsert: update existing window if slug or slot_id already exists
+        existing = None
         res = await db.execute(select(CMSWindow).where(CMSWindow.slug == payload.slug))
-        if res.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Window slug already exists")
-        
-        if payload.slot_id:
+        existing = res.scalar_one_or_none()
+        if not existing and payload.slot_id:
             slot_res = await db.execute(select(CMSWindow).where(CMSWindow.slot_id == payload.slot_id))
-            if slot_res.scalar_one_or_none():
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slot ID already in use")
+            existing = slot_res.scalar_one_or_none()
 
+        if existing:
+            existing.slot_id = payload.slot_id or existing.slot_id
+            existing.slug = payload.slug
+            existing.title = payload.title
+            existing.category = payload.category
+            existing.summary = payload.summary
+            existing.problem = payload.problem
+            existing.solution = payload.solution
+            existing.metrics = payload.metrics or []
+            existing.tags = payload.tags or []
+            existing.is_published = payload.is_published
+            existing.updated_at = now
+            await db.commit()
+            await db.refresh(existing)
+            return existing
+
+        new_window = CMSWindow(
+            id=uuid.uuid4(),
+            slot_id=payload.slot_id,
+            slug=payload.slug,
+            title=payload.title,
+            category=payload.category,
+            summary=payload.summary,
+            problem=payload.problem,
+            solution=payload.solution,
+            metrics=payload.metrics or [],
+            tags=payload.tags or [],
+            is_published=payload.is_published,
+            updated_at=now,
+        )
         db.add(new_window)
         await db.commit()
         await db.refresh(new_window)
@@ -85,8 +100,37 @@ async def create_window(
     except HTTPException:
         raise
     except Exception:
-        _memory_windows.insert(0, new_window)
-        return new_window
+        for w in _memory_windows:
+            if w.slug == payload.slug or (payload.slot_id and w.slot_id == payload.slot_id):
+                w.slot_id = payload.slot_id or w.slot_id
+                w.slug = payload.slug
+                w.title = payload.title
+                w.category = payload.category
+                w.summary = payload.summary
+                w.problem = payload.problem
+                w.solution = payload.solution
+                w.metrics = payload.metrics or []
+                w.tags = payload.tags or []
+                w.is_published = payload.is_published
+                w.updated_at = now
+                return w
+
+        fallback_window = CMSWindow(
+            id=uuid.uuid4(),
+            slot_id=payload.slot_id,
+            slug=payload.slug,
+            title=payload.title,
+            category=payload.category,
+            summary=payload.summary,
+            problem=payload.problem,
+            solution=payload.solution,
+            metrics=payload.metrics or [],
+            tags=payload.tags or [],
+            is_published=payload.is_published,
+            updated_at=now,
+        )
+        _memory_windows.insert(0, fallback_window)
+        return fallback_window
 
 
 @router.put("/{id}", response_model=CMSWindowResponse)
