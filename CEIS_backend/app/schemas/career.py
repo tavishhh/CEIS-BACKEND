@@ -34,6 +34,18 @@ class CareerRoleCreate(CareerRoleBase):
     model_config = ConfigDict(extra="forbid")
 
 
+class CareerRoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    title: str | None = None
+    department: str | None = None
+    location: str | None = None
+    employment_type: str | None = None
+    experience: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
 class CareerRoleResponse(CareerRoleBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,9 +134,9 @@ class JobApplicationCreateResponse(BaseModel):
 
 
 class JobApplicationStatusUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
-    status: Literal["received", "shortlisted", "interviewing", "rejected"]
+    status: Literal["received", "shortlisted", "interviewing", "reviewed", "in_review", "rejected", "hired", "archived"]
 
 
 class JobApplicationResponse(BaseModel):

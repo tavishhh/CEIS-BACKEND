@@ -81,9 +81,9 @@ class ClientInquiryCreateResponse(BaseModel):
 
 
 class ClientInquiryStatusUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
-    status: Literal["new", "in_review", "contacted", "archived"]
+    status: Literal["new", "in_progress", "in_review", "contacted", "resolved", "archived"]
 
 
 class ClientInquiryResponse(BaseModel):
