@@ -83,12 +83,22 @@ async def update_inquiry_status(
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    clean_id = id.lstrip('#').strip()
     stmt = select(ClientInquiry)
     try:
-        val_uuid = uuid.UUID(id)
-        stmt = stmt.where((ClientInquiry.id == val_uuid) | (ClientInquiry.reference_id == id))
+        val_uuid = uuid.UUID(clean_id)
+        stmt = stmt.where(
+            (ClientInquiry.id == val_uuid)
+            | (ClientInquiry.reference_id == clean_id)
+            | (ClientInquiry.reference_id == f"#{clean_id}")
+            | (ClientInquiry.reference_id == id)
+        )
     except ValueError:
-        stmt = stmt.where(ClientInquiry.reference_id == id)
+        stmt = stmt.where(
+            (ClientInquiry.reference_id == clean_id)
+            | (ClientInquiry.reference_id == f"#{clean_id}")
+            | (ClientInquiry.reference_id == id)
+        )
 
     try:
         res = await db.execute(stmt)
@@ -97,20 +107,23 @@ async def update_inquiry_status(
             inquiry.status = payload.status
             await db.commit()
             await db.refresh(inquiry)
+            for inq in _memory_inquiries:
+                if str(inq.id) == str(inquiry.id) or inq.reference_id in (clean_id, f"#{clean_id}", id):
+                    inq.status = payload.status
             return inquiry
     except Exception:
-        pass
+        await db.rollback()
 
     # Fallback to in-memory inquiries or mock record
     for inq in _memory_inquiries:
-        if str(inq.id) == id or inq.reference_id == id:
+        if str(inq.id) in (clean_id, id) or inq.reference_id in (clean_id, f"#{clean_id}", id):
             inq.status = payload.status
             return inq
 
     # Create and return memory fallback if updating seeded frontend data (e.g. CE-1042)
     mock_inq = ClientInquiry(
         id=uuid.uuid4(),
-        reference_id=id,
+        reference_id=clean_id,
         full_name="Client Inquiry",
         email="client@example.com",
         company="Enterprise Client",

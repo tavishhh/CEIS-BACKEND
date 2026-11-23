@@ -85,12 +85,22 @@ async def update_application_status(
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    clean_id = id.lstrip('#').strip()
     stmt = select(JobApplication)
     try:
-        val_uuid = uuid.UUID(id)
-        stmt = stmt.where((JobApplication.id == val_uuid) | (JobApplication.application_id == id))
+        val_uuid = uuid.UUID(clean_id)
+        stmt = stmt.where(
+            (JobApplication.id == val_uuid)
+            | (JobApplication.application_id == clean_id)
+            | (JobApplication.application_id == f"#{clean_id}")
+            | (JobApplication.application_id == id)
+        )
     except ValueError:
-        stmt = stmt.where(JobApplication.application_id == id)
+        stmt = stmt.where(
+            (JobApplication.application_id == clean_id)
+            | (JobApplication.application_id == f"#{clean_id}")
+            | (JobApplication.application_id == id)
+        )
 
     try:
         res = await db.execute(stmt)
@@ -99,25 +109,28 @@ async def update_application_status(
             application.status = payload.status
             await db.commit()
             await db.refresh(application)
+            for app_item in _memory_applications:
+                if str(app_item.id) == str(application.id) or app_item.application_id in (clean_id, f"#{clean_id}", id):
+                    app_item.status = payload.status
             return application
     except Exception:
-        pass
+        await db.rollback()
 
     # Fallback to in-memory applications or mock record
     for app_item in _memory_applications:
-        if str(app_item.id) == id or app_item.application_id == id:
+        if str(app_item.id) in (clean_id, id) or app_item.application_id in (clean_id, f"#{clean_id}", id):
             app_item.status = payload.status
             return app_item
 
     mock_app = JobApplication(
         id=uuid.uuid4(),
-        application_id=id,
-        role_id=None,          # uuid.UUID | None — keep None, schema allows it
+        application_id=clean_id,
+        role_id=None,
         role_title="General Role",
         full_name="Applicant",
         email="applicant@example.com",
-        phone="",              # str, non-nullable — empty string is valid
-        portfolio_url="",      # str, non-nullable — empty string is valid
+        phone="",
+        portfolio_url="",
         resume_url="",
         cover_note=None,
         status=payload.status,
