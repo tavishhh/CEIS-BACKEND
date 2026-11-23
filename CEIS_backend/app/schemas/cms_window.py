@@ -18,11 +18,11 @@ class CMSWindowBase(BaseModel):
 
 
 class CMSWindowCreate(CMSWindowBase):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
 
 class CMSWindowUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     slot_id: str | None = None
     slug: str | None = Field(None, min_length=2, max_length=160)

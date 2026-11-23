@@ -65,13 +65,19 @@ async def update_career_role(
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    val_uuid = None
     try:
         val_uuid = uuid.UUID(id)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid career role ID")
+    except (ValueError, AttributeError):
+        pass
 
     try:
-        res = await db.execute(select(CareerRole).where(CareerRole.id == val_uuid))
+        stmt = select(CareerRole)
+        if val_uuid:
+            stmt = stmt.where(CareerRole.id == val_uuid)
+        else:
+            stmt = stmt.where(CareerRole.title.ilike(f"%{id}%"))
+        res = await db.execute(stmt)
         role = res.scalar_one_or_none()
         if role:
             update_data = payload.model_dump(exclude_unset=True)
@@ -86,13 +92,33 @@ async def update_career_role(
         pass
 
     for c in _memory_careers:
-        if str(c.id) == id:
+        if str(c.id) == id or id.lower() in c.title.lower():
             update_data = payload.model_dump(exclude_unset=True)
             for k, v in update_data.items():
                 setattr(c, k, v)
             return c
 
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Career role not found")
+    # Fallback upsert for seeded mock/ID roles
+    now = datetime.now(timezone.utc)
+    fallback_role = CareerRole(
+        id=val_uuid or uuid.uuid4(),
+        title=payload.title or f"Engineering Role ({id})",
+        department=payload.department or "Engineering",
+        location=payload.location or "Indore, MP (On-Site / Hybrid)",
+        employment_type=payload.employment_type or "Full-Time",
+        experience=payload.experience or "2-4 Years",
+        description=payload.description or "Core role at CodeEagle Info Solutions.",
+        is_active=payload.is_active if payload.is_active is not None else True,
+        created_at=now,
+    )
+    try:
+        db.add(fallback_role)
+        await db.commit()
+        await db.refresh(fallback_role)
+        return fallback_role
+    except Exception:
+        _memory_careers.insert(0, fallback_role)
+        return fallback_role
 
 
 @router.delete("/{id}")

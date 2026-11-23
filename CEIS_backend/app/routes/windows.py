@@ -135,13 +135,24 @@ async def create_window(
 
 @router.put("/{id}", response_model=CMSWindowResponse)
 async def update_window(
-    id: uuid.UUID,
+    id: str,
     payload: CMSWindowUpdate,
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    val_uuid = None
     try:
-        res = await db.execute(select(CMSWindow).where(CMSWindow.id == id))
+        val_uuid = uuid.UUID(id)
+    except (ValueError, AttributeError):
+        pass
+
+    try:
+        stmt = select(CMSWindow)
+        if val_uuid:
+            stmt = stmt.where(CMSWindow.id == val_uuid)
+        else:
+            stmt = stmt.where((CMSWindow.slug == id) | (CMSWindow.slot_id == id))
+        res = await db.execute(stmt)
         window = res.scalar_one_or_none()
         if window:
             updates = payload.model_dump(exclude_unset=True)
@@ -155,7 +166,7 @@ async def update_window(
         pass
 
     for w in _memory_windows:
-        if w.id == id:
+        if str(w.id) == id or w.slug == id or w.slot_id == id:
             updates = payload.model_dump(exclude_unset=True)
             for k, v in updates.items():
                 setattr(w, k, v)
@@ -164,11 +175,11 @@ async def update_window(
 
     now = datetime.now(timezone.utc)
     mock_w = CMSWindow(
-        id=id,
-        slot_id=payload.slot_id,
-        slug=payload.slug or f"window-{str(id)[:8]}",
+        id=val_uuid or uuid.uuid4(),
+        slot_id=payload.slot_id or id,
+        slug=payload.slug or id,
         title=payload.title or "Updated Window",
-        category=payload.category or "general",
+        category=payload.category or "CMS_SLOT",
         summary=payload.summary or "Summary of updated window",
         problem=payload.problem,
         solution=payload.solution,
@@ -177,8 +188,14 @@ async def update_window(
         is_published=payload.is_published if payload.is_published is not None else True,
         updated_at=now,
     )
-    _memory_windows.insert(0, mock_w)
-    return mock_w
+    try:
+        db.add(mock_w)
+        await db.commit()
+        await db.refresh(mock_w)
+        return mock_w
+    except Exception:
+        _memory_windows.insert(0, mock_w)
+        return mock_w
 
 
 @router.delete("/{id}")
