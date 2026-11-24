@@ -89,18 +89,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for frontend communication
-ALLOWED_ORIGINS = [
-    "http://localhost:4321",
-    "http://localhost:3000",
-    "http://127.0.0.1:4321",
-    "http://192.168.1.5:4321",
-    "https://ceis-d1.vercel.app",
-    "https://www.codeeagleinfosolutions.com",
-    "https://codeeagleinfosolutions.com",
-]
-
-# CORS middleware for frontend communication
+# CORS middleware for frontend communication (supports live domain, Vercel preview, and local dev)
 ALLOWED_ORIGINS = [
     "http://localhost:4321",
     "http://localhost:3000",
