@@ -158,6 +158,7 @@ async def update_application_status(
     db: AsyncSession = Depends(get_db),
 ):
     clean_id = id.lstrip('#').strip()
+    clean_status = (payload.status or "received").strip().lower()
     stmt = select(JobApplication)
     try:
         val_uuid = uuid.UUID(clean_id)
@@ -178,12 +179,12 @@ async def update_application_status(
         res = await db.execute(stmt)
         application = res.scalar_one_or_none()
         if application:
-            application.status = payload.status
+            application.status = clean_status
             await db.commit()
             await db.refresh(application)
             for app_item in _memory_applications:
                 if str(app_item.id) == str(application.id) or app_item.application_id in (clean_id, f"#{clean_id}", id):
-                    app_item.status = payload.status
+                    app_item.status = clean_status
             return application
     except Exception:
         await db.rollback()
@@ -191,7 +192,7 @@ async def update_application_status(
     # Fallback to in-memory applications or mock record
     for app_item in _memory_applications:
         if str(app_item.id) in (clean_id, id) or app_item.application_id in (clean_id, f"#{clean_id}", id):
-            app_item.status = payload.status
+            app_item.status = clean_status
             return app_item
 
     mock_app = JobApplication(
@@ -205,7 +206,7 @@ async def update_application_status(
         portfolio_url="",
         resume_url="",
         cover_note=None,
-        status=payload.status,
+        status=clean_status,
         created_at=datetime.now(timezone.utc),
     )
     _memory_applications.insert(0, mock_app)

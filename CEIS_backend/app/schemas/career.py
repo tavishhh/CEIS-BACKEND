@@ -136,7 +136,23 @@ class JobApplicationCreateResponse(BaseModel):
 class JobApplicationStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    status: Literal["received", "shortlisted", "interviewing", "reviewed", "in_review", "rejected", "hired", "archived"]
+    status: str
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: str) -> str:
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in ("received", "pending", "new"):
+                return "received"
+            if s == "shortlisted":
+                return "shortlisted"
+            if s in ("interviewing", "reviewed", "in_review"):
+                return "interviewing"
+            if s == "rejected":
+                return "rejected"
+            return s
+        return v
 
 
 class JobApplicationResponse(BaseModel):
