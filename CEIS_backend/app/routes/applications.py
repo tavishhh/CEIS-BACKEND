@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -26,6 +27,55 @@ async def submit_application(
     payload: JobApplicationCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    clean_email = str(payload.email).strip().lower()
+    clean_role_title = payload.role_title.strip()
+    clean_role_title_lower = clean_role_title.lower()
+
+    # Deduplication Guard: Check database for active application for this role
+    role_filter = func.lower(JobApplication.role_title) == clean_role_title_lower
+    if payload.role_id:
+        role_filter = or_(JobApplication.role_id == payload.role_id, role_filter)
+
+    existing_stmt = (
+        select(JobApplication)
+        .where(
+            func.lower(JobApplication.email) == clean_email,
+            role_filter,
+            func.lower(JobApplication.status) != "rejected",
+        )
+        .order_by(JobApplication.created_at.desc())
+    )
+
+    try:
+        res = await db.execute(existing_stmt)
+        existing_app = res.scalars().first()
+        if existing_app:
+            ref = existing_app.application_id
+            ref_fmt = ref if ref.startswith("#") else f"#{ref}"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"You have already applied for this role (Reference: {ref_fmt}). Our engineering team is reviewing your application.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Fall through to in-memory check if DB read fails
+        pass
+
+    # In-memory deduplication check
+    for mem_app in _memory_applications:
+        mem_email = (mem_app.email or "").strip().lower()
+        mem_title = (mem_app.role_title or "").strip().lower()
+        mem_status = (mem_app.status or "").strip().lower()
+        role_match = (payload.role_id and mem_app.role_id == payload.role_id) or (mem_title == clean_role_title_lower)
+        if mem_email == clean_email and role_match and mem_status != "rejected":
+            ref = mem_app.application_id
+            ref_fmt = ref if ref.startswith("#") else f"#{ref}"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"You have already applied for this role (Reference: {ref_fmt}). Our engineering team is reviewing your application.",
+            )
+
     app_id = generate_application_id()
     try:
         while True:
@@ -41,13 +91,13 @@ async def submit_application(
         id=uuid.uuid4(),
         application_id=app_id,
         role_id=payload.role_id,
-        role_title=payload.role_title,
-        full_name=payload.full_name,
-        email=str(payload.email),
-        phone=payload.phone,
-        portfolio_url=payload.portfolio_url,
-        resume_url=payload.resume_url,
-        cover_note=payload.cover_note,
+        role_title=clean_role_title,
+        full_name=payload.full_name.strip(),
+        email=clean_email,
+        phone=payload.phone.strip(),
+        portfolio_url=payload.portfolio_url.strip(),
+        resume_url=payload.resume_url.strip(),
+        cover_note=payload.cover_note.strip() if payload.cover_note else None,
         status="received",
         created_at=now,
     )
@@ -56,7 +106,29 @@ async def submit_application(
         db.add(application)
         await db.commit()
         await db.refresh(application)
+    except IntegrityError:
+        await db.rollback()
+        # Handle concurrent submission collision
+        try:
+            res = await db.execute(existing_stmt)
+            existing_app = res.scalars().first()
+            if existing_app:
+                ref = existing_app.application_id
+                ref_fmt = ref if ref.startswith("#") else f"#{ref}"
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"You have already applied for this role (Reference: {ref_fmt}). Our engineering team is reviewing your application.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You have already applied for this role. Our engineering team is reviewing your application.",
+        )
     except Exception:
+        await db.rollback()
         _memory_applications.insert(0, application)
 
     return JobApplicationCreateResponse(

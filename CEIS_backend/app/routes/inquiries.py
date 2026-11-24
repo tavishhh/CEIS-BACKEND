@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -26,6 +26,54 @@ async def submit_inquiry(
     payload: ClientInquiryCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    clean_email = str(payload.email).strip().lower()
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=24)
+    active_statuses = ["new", "in_review", "in_progress", "open"]
+
+    # 24-Hour Cooldown Protection: Check for existing active inquiry from same email
+    existing_stmt = (
+        select(ClientInquiry)
+        .where(
+            func.lower(ClientInquiry.email) == clean_email,
+            func.lower(ClientInquiry.status).in_(active_statuses),
+            ClientInquiry.created_at >= cutoff,
+        )
+        .order_by(ClientInquiry.created_at.desc())
+    )
+
+    try:
+        res = await db.execute(existing_stmt)
+        existing_inq = res.scalars().first()
+        if existing_inq:
+            ref = existing_inq.reference_id
+            ref_fmt = ref if ref.startswith("#") else f"#{ref}"
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"An active inquiry from this email was already logged today (Reference: {ref_fmt}). A Principal Engineer will respond within 4 hours.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Fall through to in-memory check if DB read fails
+        pass
+
+    # In-memory cooldown check
+    for inq_mem in _memory_inquiries:
+        mem_email = (inq_mem.email or "").strip().lower()
+        mem_status = (inq_mem.status or "").strip().lower()
+        mem_created = inq_mem.created_at
+        if mem_created:
+            if mem_created.tzinfo is None:
+                mem_created = mem_created.replace(tzinfo=timezone.utc)
+            if mem_email == clean_email and mem_status in active_statuses and mem_created >= cutoff:
+                ref = inq_mem.reference_id
+                ref_fmt = ref if ref.startswith("#") else f"#{ref}"
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"An active inquiry from this email was already logged today (Reference: {ref_fmt}). A Principal Engineer will respond within 4 hours.",
+                )
+
     ref_id = generate_inquiry_reference_id()
     try:
         while True:
@@ -36,15 +84,14 @@ async def submit_inquiry(
     except Exception:
         pass
 
-    now = datetime.now(timezone.utc)
     inquiry = ClientInquiry(
         id=uuid.uuid4(),
         reference_id=ref_id,
-        full_name=payload.full_name,
-        email=str(payload.email),
-        company=payload.company,
-        service_interest=payload.service_interest,
-        message=payload.message,
+        full_name=payload.full_name.strip(),
+        email=clean_email,
+        company=payload.company.strip() if payload.company else None,
+        service_interest=payload.service_interest.strip() if payload.service_interest else None,
+        message=payload.message.strip(),
         status="new",
         created_at=now,
     )
@@ -54,6 +101,7 @@ async def submit_inquiry(
         await db.commit()
         await db.refresh(inquiry)
     except Exception:
+        await db.rollback()
         _memory_inquiries.insert(0, inquiry)
 
     return ClientInquiryCreateResponse(
